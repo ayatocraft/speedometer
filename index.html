@@ -3,49 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GPS Speed Meter</title>
+<title>GPS Speed & Distance Meter</title>
 
 <style>
-  body {
-    margin: 0;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #0f172a;
-    color: white;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-  }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0f172a;
+  color: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
 
-  .container {
-    text-align: center;
-  }
+.container {
+  text-align: center;
+}
 
-  .speed {
-    font-size: 64px;
-    font-weight: bold;
-  }
+.speed {
+  font-size: 64px;
+  font-weight: bold;
+}
 
-  .unit {
-    font-size: 24px;
-    opacity: 0.8;
-  }
+.unit {
+  font-size: 24px;
+  opacity: 0.8;
+}
 
-  button {
-    margin-top: 20px;
-    padding: 12px 20px;
-    font-size: 16px;
-    border-radius: 10px;
-    border: none;
-    background: #2563eb;
-    color: white;
-  }
+.distance {
+  margin-top: 10px;
+  font-size: 20px;
+}
 
-  .status {
-    margin-top: 10px;
-    font-size: 14px;
-    opacity: 0.7;
-  }
+button {
+  margin-top: 15px;
+  padding: 12px 22px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: none;
+  background: #2563eb;
+  color: white;
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 14px;
+  opacity: 0.7;
+}
 </style>
 </head>
 
@@ -53,7 +58,12 @@
 <div class="container">
   <div class="speed" id="speed">0.0</div>
   <div class="unit" id="unit">km/h</div>
-  <button onclick="changeUnit()">単位切替</button>
+
+  <div class="distance" id="distance">距離: 0.00 km</div>
+
+  <button onclick="changeUnit()">単位切替</button><br>
+  <button onclick="toggleDistance()" id="distBtn">距離測位 開始</button>
+
   <div class="status" id="status">GPS待機中…</div>
 </div>
 
@@ -61,6 +71,11 @@
 let currentUnit = "kmh"; // kmh | ms | mph
 let lastSpeedMS = 0;
 
+let trackingDistance = false;
+let totalDistanceM = 0;
+let lastPosition = null;
+
+// 単位切替
 function changeUnit() {
   if (currentUnit === "kmh") currentUnit = "ms";
   else if (currentUnit === "ms") currentUnit = "mph";
@@ -68,36 +83,77 @@ function changeUnit() {
   updateDisplay();
 }
 
+// 距離測位 開始/停止
+function toggleDistance() {
+  trackingDistance = !trackingDistance;
+
+  if (trackingDistance) {
+    totalDistanceM = 0;
+    lastPosition = null;
+    document.getElementById("distBtn").textContent = "距離測位 停止";
+  } else {
+    document.getElementById("distBtn").textContent = "距離測位 開始";
+  }
+}
+
+// 表示更新
 function updateDisplay() {
-  let value = 0;
+  // 速度
+  let speedValue = 0;
   let unitText = "";
 
   if (currentUnit === "kmh") {
-    value = lastSpeedMS * 3.6;
+    speedValue = lastSpeedMS * 3.6;
     unitText = "km/h";
   } else if (currentUnit === "ms") {
-    value = lastSpeedMS;
+    speedValue = lastSpeedMS;
     unitText = "m/s";
   } else {
-    value = lastSpeedMS * 2.23694;
+    speedValue = lastSpeedMS * 2.23694;
     unitText = "mph";
   }
 
-  document.getElementById("speed").textContent = value.toFixed(1);
+  document.getElementById("speed").textContent = speedValue.toFixed(1);
   document.getElementById("unit").textContent = unitText;
+
+  // 距離
+  let distText = "";
+  if (currentUnit === "kmh") {
+    distText = (totalDistanceM / 1000).toFixed(2) + " km";
+  } else if (currentUnit === "ms") {
+    distText = totalDistanceM.toFixed(1) + " m";
+  } else {
+    distText = (totalDistanceM * 3.28084).toFixed(1) + " ft";
+  }
+
+  document.getElementById("distance").textContent = "距離: " + distText;
 }
 
+// GPS
 if ("geolocation" in navigator) {
   navigator.geolocation.watchPosition(
     pos => {
-      const speed = pos.coords.speed;
+      const { latitude, longitude, speed } = pos.coords;
+
       if (speed !== null) {
         lastSpeedMS = speed;
-        updateDisplay();
-        document.getElementById("status").textContent = "測位中";
-      } else {
-        document.getElementById("status").textContent = "速度取得不可（停止中？）";
       }
+
+      if (trackingDistance) {
+        if (lastPosition) {
+          const d = calcDistance(
+            lastPosition.lat,
+            lastPosition.lon,
+            latitude,
+            longitude
+          );
+          totalDistanceM += d;
+        }
+        lastPosition = { lat: latitude, lon: longitude };
+      }
+
+      updateDisplay();
+      document.getElementById("status").textContent = "測位中";
     },
     err => {
       document.getElementById("status").textContent = "GPSエラー";
@@ -111,6 +167,23 @@ if ("geolocation" in navigator) {
   );
 } else {
   document.getElementById("status").textContent = "GPS非対応";
+}
+
+// 2点間距離（Haversine）
+function calcDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = v => v * Math.PI / 180;
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 </script>
 </body>
