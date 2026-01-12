@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GPS Speed Meter</title>
+
+<style>
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0f172a;
+    color: white;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+
+  .container {
+    text-align: center;
+  }
+
+  .speed {
+    font-size: 64px;
+    font-weight: bold;
+  }
+
+  .unit {
+    font-size: 24px;
+    opacity: 0.8;
+  }
+
+  button {
+    margin-top: 20px;
+    padding: 12px 20px;
+    font-size: 16px;
+    border-radius: 10px;
+    border: none;
+    background: #2563eb;
+    color: white;
+  }
+
+  .status {
+    margin-top: 10px;
+    font-size: 14px;
+    opacity: 0.7;
+  }
+</style>
+</head>
+
+<body>
+<div class="container">
+  <div class="speed" id="speed">0.0</div>
+  <div class="unit" id="unit">km/h</div>
+  <button onclick="changeUnit()">単位切替</button>
+  <div class="status" id="status">GPS待機中…</div>
+</div>
+
+<script>
+let currentUnit = "kmh"; // kmh | ms | mph
+let lastSpeedMS = 0;
+
+function changeUnit() {
+  if (currentUnit === "kmh") currentUnit = "ms";
+  else if (currentUnit === "ms") currentUnit = "mph";
+  else currentUnit = "kmh";
+  updateDisplay();
+}
+
+function updateDisplay() {
+  let value = 0;
+  let unitText = "";
+
+  if (currentUnit === "kmh") {
+    value = lastSpeedMS * 3.6;
+    unitText = "km/h";
+  } else if (currentUnit === "ms") {
+    value = lastSpeedMS;
+    unitText = "m/s";
+  } else {
+    value = lastSpeedMS * 2.23694;
+    unitText = "mph";
+  }
+
+  document.getElementById("speed").textContent = value.toFixed(1);
+  document.getElementById("unit").textContent = unitText;
+}
+
+if ("geolocation" in navigator) {
+  navigator.geolocation.watchPosition(
+    pos => {
+      const speed = pos.coords.speed;
+      if (speed !== null) {
+        lastSpeedMS = speed;
+        updateDisplay();
+        document.getElementById("status").textContent = "測位中";
+      } else {
+        document.getElementById("status").textContent = "速度取得不可（停止中？）";
+      }
+    },
+    err => {
+      document.getElementById("status").textContent = "GPSエラー";
+      console.error(err);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 500,
+      timeout: 10000
+    }
+  );
+} else {
+  document.getElementById("status").textContent = "GPS非対応";
+}
+</script>
+</body>
+</html>
